@@ -1,5 +1,6 @@
 (ns corax.core
-  (:require [raven-clj.core :as raven])
+  (:require [clj-stacktrace.core :refer [parse-exception]]
+            [raven-clj.core :as raven])
   (:import (java.text SimpleDateFormat)
            (java.util Date TimeZone)))
 
@@ -34,7 +35,7 @@
   ([event fmt params]
      (let [fmt (truncate-string-to-1000-chars fmt)
            message {:message fmt :params params}]
-       (assoc event :sentry.interfaces.message.Message message))))
+       (assoc event :sentry.interfaces.Message message))))
 
 (defn level
   "The the severity of the event (a string or a keyword). If not
@@ -115,10 +116,50 @@
   ([event e]
      (update-in event [:extra] merge e)))
 
+(defn- build-java-frame
+  [{:keys [method class file line]}]
+  {:function method
+   :module class
+   ;; File name overwrites module name in the Sentry interface
+   ;; :filename file
+   :lineno line})
+
+(defn- build-clojure-frame
+  [{:keys [fn ns file line]}]
+  {:function fn
+   :module ns
+   ;; File name overwrites module name in the Sentry interface
+   ;; :filename file
+   :lineno line})
+
+(defn- build-frame
+  [{:keys [clojure] :as frame}]
+  (if clojure
+    (build-clojure-frame frame)
+    (build-java-frame frame)))
+
+(defn- build-stacktrace
+  [{:keys [trace-elems]}]
+  {:frames (->> trace-elems
+                reverse
+                (map build-frame)
+                vec)})
+
 (defn exception
-  [e]
-  ;; TODO
-  )
+  "Include an exception in the event. The `ex` argument must be a
+  java.lang.Throwable. Eg:
+    (exception ex)
+    (exception event ex)"
+  ([^Throwable ex] (exception {} ex))
+  ([event ^Throwable ex]
+     (let [parsed-ex (parse-exception ex)
+           ex-type (:class parsed-ex)
+           ex-value (:message parsed-ex)
+           stacktrace (build-stacktrace parsed-ex)]
+       (assoc event
+         :sentry.interfaces.Exception {:values [{:type (.getName ex-type)
+                                                 :value ex-value
+                                                 :stacktrace stacktrace}]}))))
 
 (defn http
   []
@@ -136,7 +177,7 @@
      (user {} u))
   ([event {:keys [id username email ip-address]}]
      (assoc event
-       :sentry.interfaces.user.User
+       :sentry.interfaces.User
        (merge {}
               (when id {:id id})
               (when username {:username username})
@@ -158,7 +199,7 @@
   ([event {:keys [query engine]}]
      {:pre [(some? query)]}
      (assoc event
-       :sentry.interfaces.query.Query
+       :sentry.interfaces.Query
        (merge {:query query}
               (when engine {:engine engine})))))
 
@@ -193,6 +234,6 @@
   (-> (exception e)
       (message "Failed to handle message.")
       (extra msg)
-      (user :id "liwp")
+      (user {:id "liwp"})
       (report "dsn://1.2.3"))
   )

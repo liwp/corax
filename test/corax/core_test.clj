@@ -25,7 +25,7 @@
 (deftest test-messagef
   (testing "messagef"
     (testing "when given only a format message and params"
-      (is (= {:sentry.interfaces.message.Message
+      (is (= {:sentry.interfaces.Message
               {:message "message"
                :params [:param]}}
              (messagef "message" [:param]))
@@ -33,7 +33,7 @@
 
     (testing "when given an event"
       (is (= {:foo :bar
-              :sentry.interfaces.message.Message
+              :sentry.interfaces.Message
               {:message "message"
                :params [:param]}}
              (messagef {:foo :bar} "message" [:param]))
@@ -44,7 +44,7 @@
         (is (= 1000
                (-> msg
                    (messagef [:param])
-                   :sentry.interfaces.message.Message
+                   :sentry.interfaces.Message
                    :message
                    count))
             "should truncate :message field to 1000 characters")))))
@@ -137,7 +137,7 @@
                       :username "username"
                       :email "email"
                       :ip-address "ip"})]
-        (is (= {:sentry.interfaces.user.User
+        (is (= {:sentry.interfaces.User
                 {:id "id"
                  :username "username"
                  :email "email"
@@ -152,7 +152,7 @@
                       :email "email"
                       :ip-address "ip"})]
         (is (= {:foo "foo"
-                :sentry.interfaces.user.User
+                :sentry.interfaces.User
                 {:id "id"
                  :username "username"
                  :email "email"
@@ -168,7 +168,7 @@
                                  :ip_address "ip"}
                            f
                            nil)
-                  expected-ev {:sentry.interfaces.user.User
+                  expected-ev {:sentry.interfaces.User
                                (dissoc {:id "id"
                                         :username "username"
                                         :email "email"
@@ -180,7 +180,7 @@
 
     (testing "with unexpected arguments"
       (let [ev (user {} {:unexpted "argument"})]
-        (is (= {:sentry.interfaces.user.User {}} ev)
+        (is (= {:sentry.interfaces.User {}} ev)
             "should ignore unexpected arguments")))))
 
 (deftest test-query
@@ -188,7 +188,7 @@
     (testing "without event"
       (let [ev (query {:query "query"
                        :engine "engine"})]
-        (is (= {:sentry.interfaces.query.Query
+        (is (= {:sentry.interfaces.Query
                 {:query "query"
                  :engine "engine"}}
                ev)
@@ -199,7 +199,7 @@
                       {:query "query"
                        :engine "engine"})]
         (is (= {:foo "foo"
-                :sentry.interfaces.query.Query
+                :sentry.interfaces.Query
                 {:query "query"
                  :engine "engine"}}
                ev)
@@ -209,7 +209,7 @@
       (let [ev (query {:foo "foo"}
                       {:query "query"})]
         (is (= {:foo "foo"
-                :sentry.interfaces.query.Query
+                :sentry.interfaces.Query
                 {:query "query"}}
                ev)
             "Query interface should contain :query field")))
@@ -220,5 +220,5 @@
 
     (testing "with unexpected arguments"
       (let [ev (query {} {:query "query" :unexpted "argument"})]
-        (is (= {:sentry.interfaces.query.Query {:query "query"}} ev)
+        (is (= {:sentry.interfaces.Query {:query "query"}} ev)
             "should ignore unexpected arguments")))))
