@@ -1,41 +1,68 @@
 (ns corax.core
-  (:require [clj-stacktrace.core :refer [parse-exception]]
+  (:require [corax.exception :refer [build-exception-value]]
+            [corax.http :refer [build-http-info]]
             [raven-clj.core :as raven])
   (:import (java.text SimpleDateFormat)
            (java.util Date TimeZone)))
 
-(defn- truncate-string-to-1000-chars
-  [s]
-  (if (> (count s) 1000)
-    (.substring s 0 1000)
-    s))
+(defn culprit
+  "The name of the function that was the primary perpetrator of this
+  event. Can be a symbol or a string. Note: an exception event will
+  include this information in the stack trace. Eg:
+    (culprit ::my-fn)
+    (culprit ev ::my-fn)
+    (culprit ev \"foo.core/my-fn\")
 
-(defn message
-  "Set the :message field in an event. The value should be a
-  user-readable representation of this event. Maximum length is 1000
-  characters. Longer messages are silently truncated. Eg:
-    (message \"The failed to froblify the message.\")
-    (message ev \"The failed to froblify the message.\")"
-  ([m]
-     (message {} m))
-  ([event m]
-     (let [m (truncate-string-to-1000-chars m)]
-       (assoc event :message m))))
+  The culprit will show up as the heading of an event in the Sentry
+  web UI."
+  ([c]
+     (culprit {} c))
+  ([event c]
+     (assoc event :culprit c)))
 
-(defn messagef
-  "Add the Message interface to an event. The params elements will be
-  inserted into the fmt string by the server. The result should be a
-  user-readable representation of this event. Maximum length of the
-  fmt argument is 1000 characters. Longer messages are silently
-  truncated. Eg:
-    (messagef \"The failed to froblify the message: %s\" msg)
-    (messagef ev \"The failed to froblify the message: %s\" msg)"
-  ([fmt params]
-     (messagef {} fmt params))
-  ([event fmt params]
-     (let [fmt (truncate-string-to-1000-chars fmt)
-           message {:message fmt :params params}]
-       (assoc event :sentry.interfaces.Message message))))
+(defn exception
+  "Include an exception in the event. The `ex` argument must be a
+  java.lang.Throwable. Eg:
+    (exception ex)
+    (exception event ex)
+
+  An exception in the error report is rendered as a stack trace under
+  the Exception heading in the Sentry web UI. The type of the
+  exception and the message are also rendered."
+  ([^Throwable ex] (exception {} ex))
+  ([event ^Throwable ex]
+     (let [value (build-exception-value ex)]
+       ;; :sentry.interfaces.Exception
+       (assoc event :exception {:values [value]}))))
+
+(defn extra
+  "Include any arbitrary metadata in the event. The argument must be a
+  map. When this function is called more than once on an event,
+  the :extra fields are merged together. The extra payload must be
+  serializable to JSON. Otherwise an exception is thrown when the
+  event is being serialized for submitting to Sentry. Eg:
+    (extra event {:foo :bar})
+    (extra event {:foo \"bar\"} :test-serialize true)
+
+  The provided data is rendered under the Additional Data heading in
+  the Sentry web UI."
+  ([e]
+     (extra {} e))
+  ([event e]
+     (update-in event [:extra] merge e)))
+
+;; TODO: how to pass in an env map while providing one and two arity
+;; versions of the fn?
+(defn http
+  ([req]
+     (http {} req))
+  ([event req]
+     {:pre [(some? (:method req))
+            (some? (:scheme req))
+            (some? (:server-name req))
+            (some? (:server-port req))
+            (some? (:uri req))]}
+     (assoc event :sentry.interfaces.Http (build-http-info req))))
 
 (defn level
   "The the severity of the event (a string or a keyword). If not
@@ -61,6 +88,57 @@
   ([event l]
      (assoc event :logger l)))
 
+(defn- truncate-string-to-1000-chars
+  [s]
+  (if (> (count s) 1000)
+    (.substring s 0 1000)
+    s))
+
+(defn message
+  "Set the :message field in an event. The value should be a
+  user-readable representation of this event. Maximum length is 1000
+  characters. Longer messages are silently truncated. Eg:
+    (message \"Failed to froblify the packet.\")
+    (message ev \"Failed to froblify the packet.\")"
+  ([m]
+     (message {} m))
+  ([event m]
+     (let [m (truncate-string-to-1000-chars m)]
+       (assoc event :message m))))
+
+(defn messagef
+  "Add the Message interface to an event. The params elements will be
+  inserted into the fmt string by the server. The result should be a
+  user-readable representation of this event. Maximum length of the
+  fmt argument is 1000 characters. Longer messages are silently
+  truncated. Eg:
+    (messagef \"The failed to froblify the message: %s\" msg)
+    (messagef ev \"The failed to froblify the message: %s\" msg)
+
+  Note: a `sentry.interfaces.Messsage` is not rendered in the Sentry
+  UI at the moment. Also, Sentry is not able to render the format
+  arguments in the format string, so there is little reason to use
+  this raven interface."
+  ([fmt params]
+     (messagef {} fmt params))
+  ([event fmt params]
+     (let [fmt (truncate-string-to-1000-chars fmt)
+           message {:message fmt :params params}]
+       (assoc event :sentry.interfaces.Message message))))
+
+(defn modules
+  "A list of relevant modules and their versions. Eg:
+     (modules {:clojure \"1.5.1\" :clj-stacktrace \"0.2.8\"})
+     (modules ev {:clojure \"1.5.1\" :clj-stacktrace \"0.2.8\"})
+
+  Modules are rendered as a list under the Package Versions heading in
+  the Sentry web UI."
+  ([ms]
+     (modules {} ms))
+  ([event ms]
+     {:pre [(map? ms)]}
+     (assoc event :modules ms)))
+
 (defn platform
   "A string representing the platform the client is submitting
   from. Eg \"clojure\" or \"python\". If a platform is not specified,
@@ -74,116 +152,6 @@
   ([event p]
      (assoc event :platform p)))
 
-(defn culprit
-  "The name of the function that was the primary perpetrator of this
-  event. Can be a symbol or a string. Note: an exception event will
-  include this information in the stack trace. Eg:
-    (culprit ::my-fn)
-    (culprit ev ::my-fn)
-    (culprit ev \"foo.core/my-fn\")"
-  ([c]
-     (culprit {} c))
-  ([event c]
-     (assoc event :culprit c)))
-
-(defn tags
-  "A map of tags and values. Eg:
-     (tags {:version \"1.2.3\" :environment :production})
-     (tags ev {:version \"1.2.3\" :environment :production})"
-  ([ts]
-     (tags {} ts))
-  ([event ts]
-     (assoc event :tags ts)))
-
-(defn modules
-  "A list of relevant modules and their versions. Eg:
-     (modules ev :clojure \"1.5.1\" :clj-stacktrace \"0.2.8\")"
-  ([ms]
-     (modules {} ms))
-  ([event ms]
-     (assoc event :modules ms)))
-
-(defn extra
-  "Include any arbitrary metadata in the event. The argument must be a
-  map. When this function is called more than once on an event,
-  the :extra fields are merged together. The extra payload must be
-  serializable to JSON. Otherwise an exception is thrown when the
-  event is being serialized for submitting to Sentry. Eg:
-    (extra event {:foo :bar})
-    (extra event {:foo \"bar\"} :test-serialize true)"
-  ([e]
-     (extra {} e))
-  ([event e]
-     (update-in event [:extra] merge e)))
-
-(defn- build-java-frame
-  [{:keys [method class file line]}]
-  {:function method
-   :module class
-   ;; File name overwrites module name in the Sentry interface
-   ;; :filename file
-   :lineno line})
-
-(defn- build-clojure-frame
-  [{:keys [fn ns file line]}]
-  {:function fn
-   :module ns
-   ;; File name overwrites module name in the Sentry interface
-   ;; :filename file
-   :lineno line})
-
-(defn- build-frame
-  [{:keys [clojure] :as frame}]
-  (if clojure
-    (build-clojure-frame frame)
-    (build-java-frame frame)))
-
-(defn- build-stacktrace
-  [{:keys [trace-elems]}]
-  {:frames (->> trace-elems
-                reverse
-                (map build-frame)
-                vec)})
-
-(defn exception
-  "Include an exception in the event. The `ex` argument must be a
-  java.lang.Throwable. Eg:
-    (exception ex)
-    (exception event ex)"
-  ([^Throwable ex] (exception {} ex))
-  ([event ^Throwable ex]
-     (let [parsed-ex (parse-exception ex)
-           ex-type (:class parsed-ex)
-           ex-value (:message parsed-ex)
-           stacktrace (build-stacktrace parsed-ex)]
-       (assoc event
-         :sentry.interfaces.Exception {:values [{:type (.getName ex-type)
-                                                 :value ex-value
-                                                 :stacktrace stacktrace}]}))))
-
-(defn http
-  []
-  ;; TODO
-  )
-
-(defn user
-  "Create an event with a User interface, or assoc a User interface to
-  a provided event. The User interface consists of four fields: id,
-  username, email, and ip-address. All are optional, but the caller
-  should provide at least either an id or an ip-address. Eg:
-    (user {:id \"12345\" :email \"user@example.com\"})
-    (user ev {:id \"12345\" :ip-address \"127.0.0.1\"})"
-  ([u]
-     (user {} u))
-  ([event {:keys [id username email ip-address]}]
-     (assoc event
-       :sentry.interfaces.User
-       (merge {}
-              (when id {:id id})
-              (when username {:username username})
-              (when email {:email email})
-              (when ip-address {:ip_address ip-address})))))
-
 (defn query
   "Create an event with a Query interface, or assoc a Query interface
   to a provided event. The Query interface consists of two fields:
@@ -193,7 +161,11 @@
   query that was being performed when the error occurred. The engine
   field is used to describe the database driver. Eg:
     (query {:query \"SELECT * FROM users\" :engine \"JDBC\"})
-    (query ev {:query \"SELECT * FROM users\"})"
+    (query ev {:query \"SELECT * FROM users\"})
+
+  Query is not rendered on the Sentry web UI at the moment. The UI
+  allows to search for events with a Query in the payload, but there
+  doesn't seem to be a way of accessing the fields of the Query."
   ([q]
      (query {} q))
   ([event {:keys [query engine]}]
@@ -202,6 +174,53 @@
        :sentry.interfaces.Query
        (merge {:query query}
               (when engine {:engine engine})))))
+
+(defn server-name
+  "A string representing the server the client is submitting from. Eg
+  \"web1.example.com\". If a server-name is not specified, it will
+  default to the client's IP address. Eg:
+    (server-name \"web1.example.com\")
+    (server-name ev \"web1.example.com\")"
+  ([name]
+     (server-name {} name))
+  ([event name]
+     (assoc event :server_name name)))
+
+(defn tags
+  "A map of tags and values. Eg:
+     (tags {:version \"1.2.3\" :environment :production})
+     (tags ev {:version \"1.2.3\" :environment :production})
+
+  Tags will show up in the Tags section of the Sentry web UI. A number
+  of tags are generated via other mechanism in a Raven error report,
+  eg the log level, logger and server name are also treated as tags."
+  ([ts]
+     (tags {} ts))
+  ([event ts]
+     (assoc event :tags ts)))
+
+(defn user
+  "Create an event with a User interface, or assoc a User interface to
+  a provided event. The User interface consists of four fields: id,
+  username, email, and ip-address. All are optional, but the caller
+  should provide at least either an id or an ip-address. Eg:
+    (user {:id \"12345\" :email \"user@example.com\"})
+    (user ev {:id \"12345\" :ip-address \"127.0.0.1\"})
+
+  User information is rendered under the User heading in the Sentry
+  web UI. Sentry keeps track of the number of users that have reported
+  the same error."
+  ([u]
+     (user {} u))
+  ([event {:keys [id username email ip-address]}]
+     (assoc event
+       ;; :sentry.interfaces.User
+       :user
+       (merge {}
+              (when id {:id id})
+              (when username {:username username})
+              (when email {:email email})
+              (when ip-address {:ip_address ip-address})))))
 
 (defn- utc
   "Returns the current or the provided UTC time as an ISO 8601 format string."
@@ -214,10 +233,10 @@
 (defn- default-event-values
   "These are the default value that the user can override via the
   event map."
-  []
+  [timestamp]
   {:level :error
    :platform :clojure
-   :timestamp (utc)})
+   :timestamp timestamp})
 
 (defn report
   "Report the event to Sentry. This includes setting some mandatory
@@ -227,13 +246,5 @@
   provided by the user (eg level and platform). Note:
   raven-clj.core/capture sets the :event-id and :server-name fields."
   [event dsn]
-  (let [event (merge (default-event-values) event)]
+  (let [event (merge (default-event-values (utc)) event)]
     (raven/capture dsn event)))
-
-(comment
-  (-> (exception e)
-      (message "Failed to handle message.")
-      (extra msg)
-      (user {:id "liwp"})
-      (report "dsn://1.2.3"))
-  )

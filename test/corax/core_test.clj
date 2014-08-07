@@ -1,66 +1,80 @@
 (ns corax.core-test
   (:require [clojure.test :refer [deftest is run-tests testing]]
-            [corax.core :refer :all]))
+            [corax.core :refer :all]
+            [raven-clj.core :as raven]))
 
-(deftest test-message
-  (testing "message"
-    (testing "when given only a message"
-      (is (= {:message "message"} (message "message"))
-          "should create new event with :message field"))
-
-    (testing "when given an event"
-      (is (= {:foo :bar :message "message"}
-             (message {:foo :bar} "message"))
-          "should assoc :message field to event"))
-
-    (testing "when given a long message"
-      (let [msg (apply str (repeat 1280 \a))]
-        (is (= 1000
-               (-> msg
-                   (message)
-                   :message
-                   count))
-            "should truncate message to 1000 characters")))))
-
-(deftest test-messagef
-  (testing "messagef"
-    (testing "when given only a format message and params"
-      (is (= {:sentry.interfaces.Message
-              {:message "message"
-               :params [:param]}}
-             (messagef "message" [:param]))
-          "should create new event with a Message interface"))
+(deftest test-culprit
+  (testing "culprit"
+    (testing "when given only a culprit name"
+      (is (= (culprit "my-culprit") {:culprit "my-culprit"})
+          "should create new event with :culprit field"))
 
     (testing "when given an event"
-      (is (= {:foo :bar
-              :sentry.interfaces.Message
-              {:message "message"
-               :params [:param]}}
-             (messagef {:foo :bar} "message" [:param]))
-          "should assoc Message interface to event"))
+      (is (= (culprit {:foo :bar} "my-culprit")
+             {:foo :bar :culprit "my-culprit"})
+          "should assoc :culprit field to event"))))
 
-    (testing "when given a long format message"
-      (let [msg (apply str (repeat 1280 \a))]
-        (is (= 1000
-               (-> msg
-                   (messagef [:param])
-                   :sentry.interfaces.Message
-                   :message
-                   count))
-            "should truncate :message field to 1000 characters")))))
+(deftest test-exception
+  (let [ex (Exception. "my message")]
+    (testing "exception"
+      (testing "when given only an exception"
+        (let [event (exception ex)]
+          (is (= (keys event) [:exception])
+              "should create new event with :exception field")
+          (is (= (count (get-in event [:exception :values])) 1)
+              "should contain one exception value")))
+
+      (testing "when given an event"
+        (let [event (exception {:foo :bar} ex)]
+          (is (= (keys event) [:exception :foo])
+              "should create new event with :exception field")
+          (is (= (count (get-in event [:exception :values])) 1)
+              "should contain one exception value"))))))
+
+(deftest test-extra
+  (testing "extra"
+    (testing "when given only a data argument"
+      (is (= (extra {:data "data"}) {:extra {:data "data"}})
+          "should create new event with :extra field"))
+
+    (testing "when given an event"
+      (is (= (extra {:foo :bar} {:data "data"})
+             {:foo :bar :extra {:data "data"}})
+          "should assoc :data field to event"))
+
+    (testing "when called multiple times"
+      (let [ev (-> (extra {:a "a"})
+                   (extra {:b "b"}))]
+        (is (= ev {:extra {:a "a" :b "b"}})
+            "should merge data maps")))))
+
+(deftest test-http
+  (let [req {:method :post
+             :scheme :http
+             :server-name "example.com"
+             :server-port 12345
+             :uri "/me"}]
+    (testing "http"
+      (testing "when given only a request"
+        (let [event (http req)]
+          (is (= (keys event) [:sentry.interfaces.Http])
+              "should create new event with :sentry.interfaces.Http field")))
+
+      (testing "when given an event and a request"
+        (let [event (http {:foo :bar} req)]
+          (is (= (keys event) [:sentry.interfaces.Http :foo])
+              "should create new event with :http field"))))))
 
 (deftest test-level
   (testing "level"
     (testing "when given only a level"
       (for [l [:fatal :error :warning :info :debug]]
-        (is (= {:level :debug}
-               (level :debug))
+        (is (= (level :debug) {:level :debug})
             "should create new event with :level field")))
 
     (testing "when given an event"
       (for [l [:fatal :error :warning :info :debug]]
-        (is (= {:foo "bar" :level :debug}
-               (level {:foo "bar"} :debug))
+        (is (= (level {:foo "bar"} :debug) {:foo "bar" :level :debug})
             "should assoc :level to event")))
 
     (testing "when given an invalid level"
@@ -72,146 +86,106 @@
 (deftest test-logger
   (testing "logger"
     (testing "when given only a logger name"
-      (is (= {:logger "my.logger"} (logger "my.logger"))
+      (is (= (logger "my.logger") {:logger "my.logger"})
           "should create new event with :logger field"))
 
     (testing "when given an event"
-      (is (= {:foo :bar :logger "my.logger"}
-             (logger {:foo :bar} "my.logger"))
+      (is (= (logger {:foo :bar} "my.logger") {:foo :bar :logger "my.logger"})
           "should assoc :logger field to event"))))
+
+(deftest test-message
+  (testing "message"
+    (testing "when given only a message"
+      (is (= (message "message") {:message "message"})
+          "should create new event with :message field"))
+
+    (testing "when given an event"
+      (is (= (message {:foo :bar} "message") {:foo :bar :message "message"})
+          "should assoc :message field to event"))
+
+    (testing "when given a long message"
+      (let [msg (apply str (repeat 1280 \a))]
+        (is (= (-> msg (message) :message count) 1000)
+            "should truncate message to 1000 characters")))))
+
+(deftest test-messagef
+  (testing "messagef"
+    (testing "when given only a format message and params"
+      (is (= (messagef "message" [:param])
+             {:sentry.interfaces.Message
+              {:message "message"
+               :params [:param]}})
+          "should create new event with a Message interface"))
+
+    (testing "when given an event"
+      (is (= (messagef {:foo :bar} "message" [:param])
+             {:foo :bar
+              :sentry.interfaces.Message
+              {:message "message"
+               :params [:param]}})
+          "should assoc Message interface to event"))
+
+    (testing "when given a long format message"
+      (let [msg (apply str (repeat 1280 \a))]
+        (is (= (-> msg
+                   (messagef [:param])
+                   :sentry.interfaces.Message
+                   :message
+                   count)
+               1000)
+            "should truncate :message field to 1000 characters")))))
+
+(deftest test-modules
+  (testing "modules"
+    (let [mods {:module-a "A" :modules-b "B"}]
+      (testing "when given only a modules map"
+        (is (= (modules mods) {:modules mods})
+            "should create new event with :modules field"))
+
+      (testing "when given an event and modules map"
+        (is (= (modules {:foo :bar} mods) {:foo :bar :modules mods})
+            "should assoc :modules field to event")))))
 
 (deftest test-platform
   (testing "platform"
     (testing "when given only a platform name"
-      (is (= {:platform :my-platform} (platform :my-platform))
+      (is (= (platform :my-platform) {:platform :my-platform})
           "should create new event with :platform field"))
 
     (testing "when given an event"
-      (is (= {:foo :bar :platform :my-platform}
-             (platform {:foo :bar} :my-platform))
+      (is (= (platform {:foo :bar} :my-platform)
+             {:foo :bar :platform :my-platform})
           "should assoc :platform field to event"))))
-
-(deftest test-culprit
-  (testing "culprit"
-    (testing "when given only a culprit name"
-      (is (= {:culprit "my-culprit"} (culprit "my-culprit"))
-          "should create new event with :culprit field"))
-
-    (testing "when given an event"
-      (is (= {:foo :bar :culprit "my-culprit"}
-             (culprit {:foo :bar} "my-culprit"))
-          "should assoc :culprit field to event"))))
-
-(deftest test-tags
-  (testing "tags"
-    (testing "when given only tags"
-      (is (= {:tags {:a "a" :b "b"}} (tags {:a "a" :b "b"}))
-          "should create new event with :tags field"))
-
-    (testing "when given an event"
-      (is (= {:foo :bar :tags {:a "a" :b "b"}}
-             (tags {:foo :bar} {:a "a" :b "b"}))
-          "should assoc :tags field to event"))))
-
-(deftest test-extra
-  (testing "extra"
-    (testing "when given only a data argument"
-      (is (= {:extra {:data "data"}} (extra {:data "data"}))
-          "should create new event with :extra field"))
-
-    (testing "when given an event"
-      (is (= {:foo :bar :extra {:data "data"}}
-             (extra {:foo :bar} {:data "data"}))
-          "should assoc :data field to event"))
-
-    (testing "when called multiple times"
-      (let [ev (-> (extra {:a "a"})
-                   (extra {:b "b"}))]
-        (is (= {:extra {:a "a" :b "b"}} ev)
-            "should merge data maps")))))
-
-(deftest test-user
-  (testing "user"
-    (testing "without event"
-      (let [ev (user {:id "id"
-                      :username "username"
-                      :email "email"
-                      :ip-address "ip"})]
-        (is (= {:sentry.interfaces.User
-                {:id "id"
-                 :username "username"
-                 :email "email"
-                 :ip_address "ip"}}
-               ev)
-            "should create new event with User interface")))
-
-    (testing "with event"
-      (let [ev (user {:foo "foo"}
-                     {:id "id"
-                      :username "username"
-                      :email "email"
-                      :ip-address "ip"})]
-        (is (= {:foo "foo"
-                :sentry.interfaces.User
-                {:id "id"
-                 :username "username"
-                 :email "email"
-                 :ip_address "ip"}}
-               ev)
-            "should assoc User interface to event")))
-
-    (testing "with subset of fields provided"
-      (for [f [:id :username :email :ip-address]
-            :let [fields (assoc {:id "id"
-                                 :username "username"
-                                 :email "email"
-                                 :ip_address "ip"}
-                           f
-                           nil)
-                  expected-ev {:sentry.interfaces.User
-                               (dissoc {:id "id"
-                                        :username "username"
-                                        :email "email"
-                                        :ip_address "ip"}
-                                       f)}
-                  actual-ev (user {} fields)]]
-        (is (= actual-ev expected-ev)
-            "should not assoc nil fields")))
-
-    (testing "with unexpected arguments"
-      (let [ev (user {} {:unexpted "argument"})]
-        (is (= {:sentry.interfaces.User {}} ev)
-            "should ignore unexpected arguments")))))
 
 (deftest test-query
   (testing "query"
     (testing "without event"
       (let [ev (query {:query "query"
                        :engine "engine"})]
-        (is (= {:sentry.interfaces.Query
+        (is (= ev
+               {:sentry.interfaces.Query
                 {:query "query"
-                 :engine "engine"}}
-               ev)
+                 :engine "engine"}})
             "should create new event with Query interface")))
 
     (testing "with event"
       (let [ev (query {:foo "foo"}
                       {:query "query"
                        :engine "engine"})]
-        (is (= {:foo "foo"
+        (is (= ev
+               {:foo "foo"
                 :sentry.interfaces.Query
                 {:query "query"
-                 :engine "engine"}}
-               ev)
+                 :engine "engine"}})
             "should assoc Query interface to event")))
 
     (testing "with no :engine argument"
       (let [ev (query {:foo "foo"}
                       {:query "query"})]
-        (is (= {:foo "foo"
+        (is (= ev
+               {:foo "foo"
                 :sentry.interfaces.Query
-                {:query "query"}}
-               ev)
+                {:query "query"}})
             "Query interface should contain :query field")))
 
     (testing "with no :query argument"
@@ -220,5 +194,88 @@
 
     (testing "with unexpected arguments"
       (let [ev (query {} {:query "query" :unexpted "argument"})]
-        (is (= {:sentry.interfaces.Query {:query "query"}} ev)
+        (is (= ev {:sentry.interfaces.Query {:query "query"}})
             "should ignore unexpected arguments")))))
+
+(deftest test-server-name
+  (testing "server-name"
+    (testing "when given only a server name"
+      (is (= (server-name :my-server-name) {:server_name :my-server-name})
+          "should create new event with :server_name field"))
+
+    (testing "when given an event and server name"
+      (is (= (server-name {:foo :bar} :my-server-name)
+             {:foo :bar :server_name :my-server-name})
+          "should assoc :server_name field to event"))))
+
+(deftest test-tags
+  (testing "tags"
+    (testing "when given only tags"
+      (is (= (tags {:a "a" :b "b"}) {:tags {:a "a" :b "b"}})
+          "should create new event with :tags field"))
+
+    (testing "when given an event"
+      (is (= (tags {:foo :bar} {:a "a" :b "b"})
+             {:foo :bar :tags {:a "a" :b "b"}})
+          "should assoc :tags field to event"))))
+
+(deftest test-user
+  (testing "user"
+    (testing "without event"
+      (let [ev (user {:id "id"
+                      :username "username"
+                      :email "email"
+                      :ip-address "ip"})]
+        (is (= ev
+               {:user
+                {:id "id"
+                 :username "username"
+                 :email "email"
+                 :ip_address "ip"}})
+            "should create new event with User interface")))
+
+    (testing "with event"
+      (let [ev (user {:foo "foo"}
+                     {:id "id"
+                      :username "username"
+                      :email "email"
+                      :ip-address "ip"})]
+        (is (= ev
+               {:foo "foo"
+                :user
+                {:id "id"
+                 :username "username"
+                 :email "email"
+                 :ip_address "ip"}})
+            "should assoc User interface to event")))
+
+    (testing "with subset of fields provided"
+      (let [all-fields {:id "id"
+                        :username "username"
+                        :email "email"
+                        :ip_address "ip"}]
+        (for [f (keys all-fields)
+              :let [fields (assoc all-fields f nil)
+                    expected-ev {:user (dissoc all-fields f)}
+                    actual-ev (user {} fields)]]
+          (is (= actual-ev expected-ev)
+              "should not assoc nil fields"))))
+
+    (testing "with unexpected arguments"
+      (let [ev (user {} {:unexpted "argument"})]
+        (is (= ev {:user {}})
+            "should ignore unexpected arguments")))))
+
+(deftest test-report
+  (testing "report"
+    (let [capture-called (atom nil)]
+      (with-redefs [corax.core/utc (fn [] "timestamp")
+                    raven/capture (fn [dsn event]
+                                    (reset! capture-called true)
+                                    (is (= dsn :dsn))
+                                    (is (= event
+                                           {:level :error
+                                            :platform :clojure
+                                            :timestamp "timestamp"})))]
+        (report {} :dsn)
+        (is (true? @capture-called))))))
