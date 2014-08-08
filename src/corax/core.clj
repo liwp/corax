@@ -1,7 +1,7 @@
 (ns corax.core
-  (:require [corax.exception :refer [build-exception-value]]
-            [corax.http :refer [build-http-info]]
-            [raven-clj.core :as raven])
+  (:require [corax.error-reporter :as error-reporter]
+            [corax.exception :refer [build-exception-value]]
+            [corax.http :refer [build-http-info]])
   (:import (java.text SimpleDateFormat)
            (java.util Date TimeZone)))
 
@@ -241,10 +241,25 @@
 (defn report
   "Report the event to Sentry. This includes setting some mandatory
   event fields that should be set by the sentry client rather than the
-  user (eg event-id, timestamp, and server-name), and providing
-  default values for some mandatory values when they have not been
-  provided by the user (eg level and platform). Note:
-  raven-clj.core/capture sets the :event-id and :server-name fields."
-  [event dsn]
+  user (eg event-id and timestamp), and providing default values for
+  some mandatory values when they have not been provided by the
+  user (eg level, platform, server-name).
+
+  The `opts` argument takes two keys: :dsn and :log-fn. The :dsn key
+  is used to provide the Sentry DSN. The :dsn key is
+  mandatory. The :log-fn key is used to hook into the logging
+  performed by Corax. Corax logs when something goes wrong with
+  sending the event to Sentry. By default the logging is written to
+  stdout. Corax tries to take care never to throw exceptions, but to
+  instead log any errors that might have occurred.
+
+  The signature of the log-fn callback is: (fn [{:keys [error
+  exception event]}] ...) where the :error key specifies the type of
+  error that occurred (:no-dsn or :exception currently), :exception is
+  set to the exception if one was thrown, and :event is set to the
+  event that was being reported. The
+  `corax.error-reporter/error-messages` map can be used to map errors
+  to messages."
+  [event {:keys [dsn log-fn] :as opts}]
   (let [event (merge (default-event-values (utc)) event)]
-    (raven/capture dsn event)))
+    (error-reporter/report event dsn log-fn)))

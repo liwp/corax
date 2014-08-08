@@ -1,7 +1,7 @@
 (ns corax.core-test
   (:require [clojure.test :refer [deftest is run-tests testing]]
             [corax.core :refer :all]
-            [raven-clj.core :as raven]))
+            [corax.error-reporter :as err]))
 
 (deftest test-culprit
   (testing "culprit"
@@ -268,14 +268,33 @@
 
 (deftest test-report
   (testing "report"
-    (let [capture-called (atom nil)]
-      (with-redefs [corax.core/utc (fn [] "timestamp")
-                    raven/capture (fn [dsn event]
-                                    (reset! capture-called true)
-                                    (is (= dsn :dsn))
-                                    (is (= event
-                                           {:level :error
-                                            :platform :clojure
-                                            :timestamp "timestamp"})))]
-        (report {} :dsn)
-        (is (true? @capture-called))))))
+    (let [report-called (atom nil)
+          dummy-log-fn (fn [])]
+      (with-redefs [corax.core/utc (fn [] "timestamp")]
+
+        (testing "with default :level, :platform, and :timestamp fields"
+          (with-redefs [err/report (fn [event dsn log-fn]
+                                     (reset! report-called true)
+                                     (is (= event
+                                            {:level :error
+                                             :platform :clojure
+                                             :timestamp "timestamp"}))
+                                     (is (= dsn "dummy dsn"))
+                                     (is (= log-fn dummy-log-fn)))]
+            (report {} {:dsn "dummy dsn" :log-fn dummy-log-fn})
+            (is (true? @report-called) "should call report")))
+
+        (testing "with overriding :level, :platform, and :timestamp fields"
+          (with-redefs [err/report (fn [event dsn log-fn]
+                                     (reset! report-called true)
+                                     (is (= event
+                                            {:level :my-level
+                                             :platform :my-platform
+                                             :timestamp :my-timestamp}))
+                                     (is (= dsn "dummy dsn"))
+                                     (is (= log-fn dummy-log-fn)))]
+            (report {:level :my-level
+                     :platform :my-platform
+                     :timestamp :my-timestamp}
+                    {:dsn "dummy dsn" :log-fn dummy-log-fn})
+            (is (true? @report-called) "should call report")))))))
