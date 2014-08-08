@@ -1,4 +1,4 @@
-** This library is still a work in progress and has not been released yet **
+# This library is still a work in progress and has not been released yet
 
 # Corax
 
