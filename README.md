@@ -345,13 +345,13 @@ Copyright © 2014 Listora
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
 
-[1] http://getsentry.com/
-[2] http://sentry.readthedocs.org/en/latest/developer/client/index.html#building-the-json-packet
-[3] http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html
-[4] http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.exception.Exception
-[5] https://github.com/mmcgrana/clj-stacktrace
-[6] https://github.com/dakrone/cheshire
-[7] http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.http.Http
-[8] http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.query.Query
-[9] http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.user.User
-[10] https://clojure.github.io/clojure/clojure.core-api.html#clojure.core/merge
+[1]: http://getsentry.com/
+[2]: http://sentry.readthedocs.org/en/latest/developer/client/index.html#building-the-json-packet
+[3]: http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html
+[4]: http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.exception.Exception
+[5]: https://github.com/mmcgrana/clj-stacktrace
+[6]: https://github.com/dakrone/cheshire
+[7]: http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.http.Http
+[8]: http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.query.Query
+[9]: http://sentry.readthedocs.org/en/latest/developer/interfaces/index.html#sentry.interfaces.user.User
+[10]: https://clojure.github.io/clojure/clojure.core-api.html#clojure.core/merge
