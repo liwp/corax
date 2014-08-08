@@ -1,3 +1,5 @@
+# This library is still a work in progress and has not been released yet
+
 # Corax
 
 [![Build Status](https://travis-ci.org/listora/corax.png?branch=master)](https://travis-ci.org/listora/corax)
