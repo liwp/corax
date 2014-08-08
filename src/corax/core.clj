@@ -106,26 +106,6 @@
      (let [m (truncate-string-to-1000-chars m)]
        (assoc event :message m))))
 
-(defn messagef
-  "Add the Message interface to an event. The params elements will be
-  inserted into the fmt string by the server. The result should be a
-  user-readable representation of this event. Maximum length of the
-  fmt argument is 1000 characters. Longer messages are silently
-  truncated. Eg:
-    (messagef \"The failed to froblify the message: %s\" msg)
-    (messagef ev \"The failed to froblify the message: %s\" msg)
-
-  Note: a `sentry.interfaces.Messsage` is not rendered in the Sentry
-  UI at the moment. Also, Sentry is not able to render the format
-  arguments in the format string, so there is little reason to use
-  this raven interface."
-  ([fmt params]
-     (messagef {} fmt params))
-  ([event fmt params]
-     (let [fmt (truncate-string-to-1000-chars fmt)
-           message {:message fmt :params params}]
-       (assoc event :sentry.interfaces.Message message))))
-
 (defn modules
   "A list of relevant modules and their versions. Eg:
      (modules {:clojure \"1.5.1\" :clj-stacktrace \"0.2.8\"})

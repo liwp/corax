@@ -108,33 +108,6 @@
         (is (= (-> msg (message) :message count) 1000)
             "should truncate message to 1000 characters")))))
 
-(deftest test-messagef
-  (testing "messagef"
-    (testing "when given only a format message and params"
-      (is (= (messagef "message" [:param])
-             {:sentry.interfaces.Message
-              {:message "message"
-               :params [:param]}})
-          "should create new event with a Message interface"))
-
-    (testing "when given an event"
-      (is (= (messagef {:foo :bar} "message" [:param])
-             {:foo :bar
-              :sentry.interfaces.Message
-              {:message "message"
-               :params [:param]}})
-          "should assoc Message interface to event"))
-
-    (testing "when given a long format message"
-      (let [msg (apply str (repeat 1280 \a))]
-        (is (= (-> msg
-                   (messagef [:param])
-                   :sentry.interfaces.Message
-                   :message
-                   count)
-               1000)
-            "should truncate :message field to 1000 characters")))))
-
 (deftest test-modules
   (testing "modules"
     (let [mods {:module-a "A" :modules-b "B"}]
