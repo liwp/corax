@@ -1,4 +1,4 @@
-(defproject corax "0.1.0-SNAPSHOT"
+(defproject corax "0.1.0"
   :description "A layer of sugar on raven-clj"
   :url "https://github.com/liwp/corax"
   :license {:name "Eclipse Public License"
