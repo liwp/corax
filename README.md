@@ -8,7 +8,7 @@ A layer of sugar on top of
 ## Clojars:
 
 ```clj
-[listora/corax "0.1.0"]
+[corax "0.1.1"]
 ```
 
 ## Usage
