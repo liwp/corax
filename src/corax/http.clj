@@ -6,10 +6,11 @@
     (str (name scheme) "://" server-name port-str uri)))
 
 (defn build-http-info
-  [{:keys [headers method params query-string remote-addr] :as req} & [env]]
+  [{:keys [headers request-method params query-string remote-addr] :as req}
+   & [env]]
   {:data params
    :env (merge {:REMOTE_ADDR remote-addr} env)
    :headers headers
-   :method method
+   :method (-> request-method name .toUpperCase)
    :query_string query-string
    :url (build-url req)})

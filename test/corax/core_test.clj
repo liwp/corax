@@ -64,7 +64,7 @@
             "should merge data maps")))))
 
 (deftest test-http
-  (let [req {:method :post
+  (let [req {:request-method :post
              :scheme :http
              :server-name "example.com"
              :server-port 12345
