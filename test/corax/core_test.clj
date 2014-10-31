@@ -19,32 +19,50 @@
     (let [ex (Exception. "my message")]
       (testing "when given only an exception"
         (let [event (exception ex)]
-          (is (= (keys event) [:exception])
+          (is (= (set (keys event)) #{:exception :message})
               "should create new event with :exception field")
           (is (= (count (get-in event [:exception :values])) 1)
-              "should contain one exception value")))
+              "should contain one exception value")
+          (is (= (:message event) "my message"))))
 
       (testing "when given an event"
         (let [event (exception {:foo :bar} ex)]
-          (is (= (keys event) [:exception :foo])
+          (is (= (set (keys event)) #{:exception :foo :message})
               "should create new event with :exception field")
           (is (= (count (get-in event [:exception :values])) 1)
-              "should contain one exception value"))))
+              "should contain one exception value")
+          (is (= (:message event) "my message")))))
 
-    (testing "with ex-data"
-      (let [ex (ex-info "test" {:a 1 :b 2})
-            event (exception ex)]
-        (is (= (set (keys event)) #{:exception :extra}))
-        (is (= (-> event :extra :ex-data) {:a 1 :b 2}))))
+    (testing "ex-data"
+      (testing "with ex-data"
+       (let [ex (ex-info "test" {:a 1 :b 2})
+             event (exception ex)]
+         (is (= (set (keys event)) #{:exception :extra :message}))
+         (is (= (-> event :extra :ex-data) {:a 1 :b 2}))))
 
-    (testing "with ex-data and event"
-      (let [ex (ex-info "test" {:a 1 :b 2})
-            event (-> (extra {:ex-data {:c 3 :d 4} :foo :bar})
-                      (exception ex))]
-        (is (= (set (keys event)) #{:exception :extra}))
-        (is (= (-> event :extra) {:foo :bar
-                                  :ex-data {:a 1 :b 2}})
-            "Overwrites :ex-data, but keeps :foo")))))
+      (testing "with ex-data and event"
+        (let [ex (ex-info "test" {:a 1 :b 2})
+              event (-> (extra {:ex-data {:c 3 :d 4} :foo :bar})
+                        (exception ex))]
+          (is (= (set (keys event)) #{:exception :extra :message}))
+          (is (= (-> event :extra) {:foo :bar
+                                    :ex-data {:a 1 :b 2}})
+              "Overwrites :ex-data, but keeps :foo"))))
+
+    (testing "message"
+      (testing "with existing message"
+        (let [ex (Exception. "test")
+              event (-> (message "message")
+                        (exception ex))]
+          (is (= (set (keys event)) #{:exception :message}))
+          (is (= (-> event :message) "message"))))
+
+      (testing "with overriding message"
+        (let [ex (Exception. "test")
+              event (-> (exception ex)
+                        (message "message"))]
+          (is (= (set (keys event)) #{:exception :message}))
+          (is (= (-> event :message) "message")))))))
 
 (deftest test-extra
   (testing "extra"
