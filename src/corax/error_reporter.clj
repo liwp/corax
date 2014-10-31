@@ -13,16 +13,18 @@
    :no-dsn "A sentry DSN was not provided. Cannot report event."})
 
 (defn- default-log-fn
-  [{:keys [dsn error event exception response]}]
-  (let [event-str (with-out-str (pprint event))
-        message (get error-messages error (str "Unknown error: " error))]
-    (println message)
-    (when dsn
-      (println "DSN: " dsn))
-    (when exception
-      (println (pst-str exception)))
-    (when response
-      (pprint response))
+  [{:keys [dsn error event exception id response]}]
+  (let [event-str (with-out-str (pprint event))]
+    (if id
+      (println "Sentry error report ID: " id)
+      (let [message (get error-messages error (str "Unknown error: " error))]
+        (println message)
+        (when dsn
+          (println "DSN: " dsn))
+        (when exception
+          (println (pst-str exception)))
+        (when response
+          (pprint response))))
     (println "Event:" event-str)))
 
 (defn- handle-event
@@ -30,19 +32,16 @@
   (try
     (let [rsp (raven/capture dsn event)]
       (if (= (:status rsp) 200)
-        (-> rsp :body (json/parse-string true) :id)
-        (do
-          (log-fn {:error :http-status :response rsp :event event})
-          nil)))
+        (log-fn {:id (-> rsp :body (json/parse-string true) :id)
+                 :event event})
+        (log-fn {:error :http-status :response rsp :event event})))
     (catch NullPointerException e
-      (log-fn {:error :invalid-dsn :dsn dsn :event event})
-      nil)
+      (log-fn {:error :invalid-dsn :dsn dsn :event event}))
     (catch JsonGenerationException e
-      (log-fn {:error :invalid-payload :exception e :event event})
-      nil)
+      (log-fn {:error :invalid-payload :exception e :event event}))
     (catch Throwable e
-      (log-fn {:error :exception :exception e :event event})
-      nil)))
+      (log-fn {:error :exception :exception e :event event})))
+  nil)
 
 (defn report
   [event dsn log-fn]

@@ -6,6 +6,13 @@
 
 (deftest test-default-log-fn
   (testing "default-log-fn"
+    (testing "with success"
+      (let [s (with-out-str
+                (#'err/default-log-fn {:id :mock-id
+                                       :event :mock-event}))]
+        (is (.contains s ":mock-id") "should print out ID")
+        (is (.contains s ":mock-event") "should print out event")))
+
     (testing "with :exception"
       (let [ex (Exception. "dummy error")
             s (with-out-str
@@ -67,14 +74,19 @@
 (deftest test-handle-event
   (testing "handle-event"
     (testing "with success"
-      (with-redefs [raven/capture
-                    (fn [dsn event]
-                      (is (= dsn :mock-dsn))
-                      (is (= event :mock-event))
-                      {:status 200
-                       :body "{\"id\":\"711a0503...\"}"})]
-        (let [report-id (#'err/handle-event :mock-event :mock-dsn (fn [& _]))]
-          (is (= report-id "711a0503...")))))
+      (let [log-fn-called (atom nil)
+            log-fn (fn [{:keys [event id]}]
+                     (reset! log-fn-called true)
+                     (is (= event :mock-event))
+                     (is (= id "711a0503...")))]
+        (with-redefs [raven/capture
+                      (fn [dsn event]
+                        (is (= dsn :mock-dsn))
+                        (is (= event :mock-event))
+                        {:status 200
+                         :body "{\"id\":\"711a0503...\"}"})]
+          (is (nil? (#'err/handle-event :mock-event :mock-dsn log-fn)))
+          (is (true? @log-fn-called) "should call log-fn"))))
 
     (testing "with unexpected HTTP status code"
       (let [log-fn-called (atom nil)
@@ -86,9 +98,8 @@
                                       (is (= dsn :mock-dsn))
                                       (is (= event :mock-event))
                                       {:status 400})]
-          (let [report-id (#'err/handle-event :mock-event :mock-dsn log-fn)]
-            (is (true? @log-fn-called) "should call log-fn")
-            (is (nil? report-id))))))
+          (is (nil? (#'err/handle-event :mock-event :mock-dsn log-fn)))
+          (is (true? @log-fn-called) "should call log-fn"))))
 
     (testing "with NPE (caused by a DSN parse error)"
       (let [ex (NullPointerException. "DSN parse error")
@@ -101,9 +112,8 @@
                                       (is (= dsn :mock-dsn))
                                       (is (= event :mock-event))
                                       (throw ex))]
-          (let [report-id (#'err/handle-event :mock-event :mock-dsn log-fn)]
-            (is (true? @log-fn-called) "should call log-fn")
-            (is (nil? report-id))))))
+          (is (nil? (#'err/handle-event :mock-event :mock-dsn log-fn)))
+          (is (true? @log-fn-called) "should call log-fn"))))
 
     (testing "with JSON generation error"
       (let [ex (JsonGenerationException. "JSON generation error")
@@ -116,9 +126,8 @@
                                       (is (= dsn :mock-dsn))
                                       (is (= event :mock-event))
                                       (throw ex))]
-          (let [report-id (#'err/handle-event :mock-event :mock-dsn log-fn)]
-            (is (true? @log-fn-called) "should call log-fn")
-            (is (nil? report-id))))))
+          (is (nil? (#'err/handle-event :mock-event :mock-dsn log-fn)))
+          (is (true? @log-fn-called) "should call log-fn"))))
 
     (testing "with unexpected exception"
       (let [ex (Exception. "dummy error")
@@ -131,9 +140,8 @@
                                       (is (= dsn :mock-dsn))
                                       (is (= event :mock-event))
                                       (throw ex))]
-          (let [report-id (#'err/handle-event :mock-event :mock-dsn log-fn)]
-            (is (true? @log-fn-called) "should call log-fn")
-            (is (nil? report-id))))))))
+          (is (nil? (#'err/handle-event :mock-event :mock-dsn log-fn)))
+          (is (true? @log-fn-called) "should call log-fn"))))))
 
 (deftest test-report
   (testing "report"
