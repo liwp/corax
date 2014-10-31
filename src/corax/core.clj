@@ -21,6 +21,7 @@
      (assoc event :culprit c)))
 
 (declare extra)
+(declare message)
 
 (defn exception
   "Include an exception in the event. The `ex` argument must be a
@@ -32,17 +33,23 @@
   included in the event under the :ex-data key in the :extra map. Any
   existing :ex-data field will be overwritten.
 
+  If the event doesn't contain a :message field yet, the exception
+  message will be set as :message. The field can be explicitly set by
+  calling `message` either before or after calling `exception`.
+
   An exception in the error report is rendered as a stack trace under
   the Exception heading in the Sentry web UI. The type of the
   exception and the message are also rendered."
   ([^Throwable ex] (exception {} ex))
   ([event ^Throwable ex]
      (let [value (build-exception-value ex)
-           data (ex-data ex)]
+           data (ex-data ex)
+           msg (:message event)]
        ;; :sentry.interfaces.Exception
        (-> event
            (assoc :exception {:values [value]})
-           (cond-> data (extra {:ex-data data}))))))
+           (cond-> data (extra {:ex-data data}))
+           (cond-> (nil? msg) (message (.getMessage ex)))))))
 
 (defn extra
   "Include any arbitrary metadata in the event. The argument must be a
