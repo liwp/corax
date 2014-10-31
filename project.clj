@@ -6,6 +6,7 @@
   :scm {:name "git"
         :url "https://github.com/liwp/corax"}
   :deploy-repositories [["releases" :clojars]]
-  :dependencies [[clj-stacktrace "0.2.8"]
+  :dependencies [[cheshire "5.3.1"]
+                 [clj-stacktrace "0.2.8"]
                  [org.clojure/clojure "1.6.0"]
                  [raven-clj "1.1.0"]])
