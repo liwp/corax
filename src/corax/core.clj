@@ -74,7 +74,7 @@
   ([req]
      (http {} req))
   ([event req]
-     {:pre [(some? (:method req))
+     {:pre [(some? (:request-method req))
             (some? (:scheme req))
             (some? (:server-name req))
             (some? (:server-port req))

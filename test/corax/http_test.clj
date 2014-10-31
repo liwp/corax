@@ -4,6 +4,7 @@
 
 (def default-request
   {:remote-addr "127.0.0.1"
+   :request-method :get
    :scheme :http
    :server-name "example.com"
    :server-port 80
@@ -23,6 +24,10 @@
            "http://example.com"))))
 
 (deftest test-build-http-info
+  (testing "method"
+    (let [http-info (build-http-info default-request)]
+      (is (= (:method http-info) "GET"))))
+
   (testing ":env"
     (testing "with no env map"
       (let [http-info (build-http-info default-request)]
