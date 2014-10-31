@@ -20,29 +20,46 @@
   ([event c]
      (assoc event :culprit c)))
 
+(declare extra)
+
 (defn exception
   "Include an exception in the event. The `ex` argument must be a
   java.lang.Throwable. Eg:
     (exception ex)
     (exception event ex)
 
+  ex-data is automatically called on `ex` and the resulting map is
+  included in the event under the :ex-data key in the :extra map. Any
+  existing :ex-data field will be overwritten.
+
   An exception in the error report is rendered as a stack trace under
   the Exception heading in the Sentry web UI. The type of the
   exception and the message are also rendered."
   ([^Throwable ex] (exception {} ex))
   ([event ^Throwable ex]
-     (let [value (build-exception-value ex)]
+     (let [value (build-exception-value ex)
+           data (ex-data ex)]
        ;; :sentry.interfaces.Exception
-       (assoc event :exception {:values [value]}))))
+       (-> event
+           (assoc :exception {:values [value]})
+           (cond-> data (extra {:ex-data data}))))))
 
 (defn extra
   "Include any arbitrary metadata in the event. The argument must be a
-  map. When this function is called more than once on an event,
-  the :extra fields are merged together. The extra payload must be
-  serializable to JSON. Otherwise an exception is thrown when the
-  event is being serialized for submitting to Sentry. Eg:
+  map.
+
+  Eg:
+    (extra {:foo :bar})
     (extra event {:foo :bar})
-    (extra event {:foo \"bar\"} :test-serialize true)
+
+  When this function is called more than once on an event, the :extra
+  fields are shallowly merged together, eg {:foo 1} and {:bar 2} will
+  become {:foo 1 :bar 2}, but {:foo {:bar 1}} and {:foo {:baz 2}} will
+  become {:foo {:baz 2}}.
+
+  The extra payload must be serializable to JSON. Otherwise an
+  exception is thrown when the event is being serialized for
+  submitting to Sentry.
 
   The provided data is rendered under the Additional Data heading in
   the Sentry web UI."

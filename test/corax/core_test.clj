@@ -15,8 +15,8 @@
           "should assoc :culprit field to event"))))
 
 (deftest test-exception
-  (let [ex (Exception. "my message")]
-    (testing "exception"
+  (testing "exception"
+    (let [ex (Exception. "my message")]
       (testing "when given only an exception"
         (let [event (exception ex)]
           (is (= (keys event) [:exception])
@@ -29,7 +29,22 @@
           (is (= (keys event) [:exception :foo])
               "should create new event with :exception field")
           (is (= (count (get-in event [:exception :values])) 1)
-              "should contain one exception value"))))))
+              "should contain one exception value"))))
+
+    (testing "with ex-data"
+      (let [ex (ex-info "test" {:a 1 :b 2})
+            event (exception ex)]
+        (is (= (set (keys event)) #{:exception :extra}))
+        (is (= (-> event :extra :ex-data) {:a 1 :b 2}))))
+
+    (testing "with ex-data and event"
+      (let [ex (ex-info "test" {:a 1 :b 2})
+            event (-> (extra {:ex-data {:c 3 :d 4} :foo :bar})
+                      (exception ex))]
+        (is (= (set (keys event)) #{:exception :extra}))
+        (is (= (-> event :extra) {:foo :bar
+                                  :ex-data {:a 1 :b 2}})
+            "Overwrites :ex-data, but keeps :foo")))))
 
 (deftest test-extra
   (testing "extra"
