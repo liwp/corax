@@ -302,27 +302,23 @@ The log function signature is:
   ...)
 ```
 
-The `error` argument is a keyword describing the error that
+The `:error` key is a keyword describing the error that
 occurred. The errors defined currently are:
 
 * `:exception` - an unexpected exception was thrown when reporting the
-  event. The `:exception key in the `log-fn` argument contains the
+  event. The `:exception` key in the `log-fn` argument contains the
   caught exception.
-
 * `:http-status` - the call to Sentry returned an unexpected HTTP
   status code. The `:response` key in the `log-fn` argument
   contains the unexpected HTTP response from clj-http.
-
 * `:invalid-dsn` - the provided DSN failed to parse. The `:dsn` key in
   the `log-fn` argument contains the invalid DSN.
-
 * `:invalid-payload` - the event failed to serialize to JSON. The
   `:exception` key will contain the exception thrown by the JSON
   serializer.
-
 * `:no-dsn` - a DSN was not provided
 
-`corax.error-reporter/error-messages` defines a mapping of `error`
+`corax.error-reporter/error-messages` defines a mapping of `:error`
 keywords to error messages, but the caller can also define their own
 translation.
 
