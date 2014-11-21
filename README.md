@@ -8,7 +8,7 @@ A layer of sugar on top of
 ## Clojars:
 
 ```clj
-[corax "0.1.1"]
+[listora/corax "0.2.0"]
 ```
 
 ## Usage
@@ -93,6 +93,15 @@ be an instance of `java.lang.Throwable`.
 (exception ex)
 (exception event ex)
 ```
+
+`ex-data` is automatically called on `ex` and the resulting map is
+included in the event under the :ex-data key in the :extra map. Any
+existing :ex-data field will be overwritten.
+
+If the event doesn't contain a `:message` field yet, the exception
+message will be set as `:message`. The `:message` field can be
+explicitly set by calling `message` either before or after calling
+`exception`.
 
 An exception in the event is rendered as a stack trace under the
 Exception heading in the Sentry web UI. The type of the exception and
@@ -286,35 +295,57 @@ specifying the `:log-fn` key in the options map.
 
 #### log function
 
-The log function signature is `(defn log [{:keys [error event
-exception]}] ...)`. The `error` argument is a keyword describing the
-error that occurred. The two errors defined at the moment as `:no-dsn`
-and `:exception`. The former occurres if the `:dsn` key has not been
-provided in the `report` call. The latter occurs if an exception is
-thrown when the event is being sent to Sentry.
+The log function signature is:
+
+```clj
+(defn log-fn [{:keys [dsn error event exception response]}]
+  ...)
+```
+
+The `error` argument is a keyword describing the error that
+occurred. The errors defined currently are:
+
+* `:exception` - an unexpected exception was thrown when reporting the
+  event. The `:exception key in the `log-fn` argument contains the
+  caught exception.
+
+* `:http-status` - the call to Sentry returned an unexpected HTTP
+  status code. The `:response` key in the `log-fn` argument
+  contains the unexpected HTTP response from clj-http.
+
+* `:invalid-dsn` - the provided DSN failed to parse. The `:dsn` key in
+  the `log-fn` argument contains the invalid DSN.
+
+* `:invalid-payload` - the event failed to serialize to JSON. The
+  `:exception` key will contain the exception thrown by the JSON
+  serializer.
+
+* `:no-dsn` - a DSN was not provided
 
 `corax.error-reporter/error-messages` defines a mapping of `error`
 keywords to error messages, but the caller can also define their own
 translation.
 
-The `exception` argument will contain a `java.lang.Throwable` in cases
-where an exception was thrown.
-
-The `event` argument will contain the event that was being reported.
+The `:event` field in the `log-fn` argument will contain the event
+that was being reported.
 
 Here's the default logging function as an example of how to override
 the logger:
 
 ```clj
 (defn my-log-fn
-  [{:keys [error event exception]}]
+  [{:keys [dsn error event exception response]}]
   (let [event-str (with-out-str (clojure.pprint/pprint event))
         message (get corax.error-reporter/error-messages
                      error
                      (str "Unknown error: " error))]
     (println message)
+    (when dsn
+      (println "DSN: " dsn))
     (when exception
       (println (clj-stacktrace.repl/pst-str exception)))
+    (when response
+       (pprint response))
     (println "Event:" event-str)))
 
 (-> (message "test logger")
@@ -330,12 +361,37 @@ A few points to notice:
 
 * We translate the `error` keyword to a user-readable message.
 
-* We handle the case where `error` is not a keyword that we expected.
+* We handle the case where `error` is an unexpected keyword.
 
-* The exception won't be always present in the call to `log-fn`.
+* Some of the fields won't always be present in the call to `log-fn`,
+  ie `:dsn`, `:exception` and `:response`.
 
 * We leverage `clj-stacktrace` to produce a Clojure-specific
   stacktrace for us.
+
+
+## Ring middleware
+
+Corax provides ring middleware for reporting any exceptions thrown by
+the request handler as errors to Sentry:
+
+```clj
+(require '[corax.middleware :refer [wrap-exception-reporting]])
+
+(defn- log-fn
+  [args]
+  ...)
+
+(defn apply-middleware
+  [routes dsn]
+  (-> routes
+      ...
+      (wrap-exception-reporting {:dsn dsn :log-fn log-fn)
+      ...))
+```
+
+Note: the middleware will rethrow the caught exception to allow some
+other middleware to catch it and return an appropriate HTTP response.
 
 
 ## License
