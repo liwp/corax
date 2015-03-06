@@ -1,51 +1,56 @@
 (ns corax.error-reporter
   (:require [cheshire.core :as json]
-            [clj-stacktrace.repl :refer [pst-str]]
-            [clojure.pprint :refer [pprint]]
+            [corax.exception :refer [build-exception-value]]
+            [corax.log :as log]
             [raven-clj.core :as raven])
-  (:import [com.fasterxml.jackson.core JsonGenerationException]))
+  (:import [com.fasterxml.jackson.core JsonGenerationException]
+           [java.text SimpleDateFormat]
+           [java.util Date TimeZone]))
 
-(def ^:const error-messages
-  {:exception "Unexpected exception."
-   :http-status "Unexpected HTTP status."
-   :invalid-dsn "DSN parsing failed."
-   :invalid-payload "Event cannot be serialized to JSON."
-   :no-dsn "A sentry DSN was not provided. Cannot report event."})
+(defn- default-event-values
+  "These are the default value that the user can override via the
+  event map."
+  [timestamp]
+  {:level :error
+   :platform :clojure
+   :timestamp timestamp})
 
-(defn- default-log-fn
-  [{:keys [dsn error event exception id response]}]
-  (let [event-str (with-out-str (pprint event))]
-    (if id
-      (println "Sentry error report ID: " id)
-      (let [message (get error-messages error (str "Unknown error: " error))]
-        (println message)
-        (when dsn
-          (println "DSN: " dsn))
-        (when exception
-          (println (pst-str exception)))
-        (when response
-          (pprint response))))
-    (println "Event:" event-str)))
+(defn- utc
+  "Returns the current or the provided UTC time as an ISO 8601 format string."
+  ([] (utc (Date.)))
+  ([date]
+   (let [fmt (doto (SimpleDateFormat. "yyyy-MM-dd'T'HH:mm:ss")
+               (.setTimeZone (TimeZone/getTimeZone "UTC")))]
+     (.format fmt date))))
 
-(defn- handle-event
-  [event dsn log-fn]
-  (try
-    (let [rsp (raven/capture dsn event)]
-      (if (= (:status rsp) 200)
-        (log-fn {:id (-> rsp :body (json/parse-string true) :id)
-                 :event event})
-        (log-fn {:error :http-status :response rsp :event event})))
-    (catch NullPointerException e
-      (log-fn {:error :invalid-dsn :dsn dsn :event event}))
-    (catch JsonGenerationException e
-      (log-fn {:error :invalid-payload :exception e :event event}))
-    (catch Throwable e
-      (log-fn {:error :exception :exception e :event event})))
-  nil)
+(defprotocol ErrorReporter
+  (-report [this event]))
 
-(defn report
-  [event dsn log-fn]
-  (let [log-fn (or log-fn default-log-fn)]
-    (if dsn
-      (handle-event event dsn log-fn)
-      (log-fn {:error :no-dsn :event event}))))
+(defn report* [event dsn logger]
+  (let [event (merge (default-event-values (utc)) event)
+        response (raven/capture dsn event)]
+    (if (= (:status response) 200)
+      (let [id (-> response :body (json/parse-string true) :id)]
+        (log/log-event-id logger id event))
+      (log/log-failure logger response event))))
+
+(defn report-json-generation-error [exception dsn logger]
+  (let [value (build-exception-value exception)
+        event {:message
+               (str "An object in the error report could not be "
+                    "serialized to JSON. This error is masking "
+                    "the real application error. For more details "
+                    "see https://github.com/listora/corax")
+               :exception {:values [value]}}]
+    (report* event dsn logger)))
+
+(defrecord CoraxErrorReporter [dsn logger]
+  ErrorReporter
+  (-report [this event]
+    (try
+      (try
+        (report* event dsn logger)
+        (catch JsonGenerationException e
+          (report-json-generation-error e dsn logger)))
+      (catch Exception e
+        (log/log-error logger e event)))))
