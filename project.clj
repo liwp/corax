@@ -1,4 +1,4 @@
-(defproject listora/corax "0.3.0"
+(defproject listora/corax "0.3.1-SNAPSHOT"
   :description "A layer of sugar on raven-clj"
   :url "https://github.com/liwp/corax"
   :license {:name "Eclipse Public License"
