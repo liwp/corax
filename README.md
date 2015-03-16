@@ -8,13 +8,13 @@ A layer of sugar on top of
 ## Clojars:
 
 ```clj
-[listora/corax "0.2.0"]
+[listora/corax "0.3.0"]
 ```
 
 ## Usage
 
 Corax is used to incrementally build a raven event and to eventually
-submit that event to [Senty][1].
+submit that event to [Sentry][1].
 
 ### Require the library:
 
@@ -22,10 +22,20 @@ submit that event to [Senty][1].
 (require '[corax.core :as err])
 ```
 
+### Create an error reporter:
+
+A `CoraxErrorReporter` is used to wrap state, like the Sentry DSN, and
+to report errors to Sentry. Create one with `new-error-reporter`:
+
+```clj
+(def my-dsn "") ;; get your DSN from getsentry.com
+(def error-reporter (err/new-error-reporter my-dsn))
+```
+
 ### Build an event:
 
 An event is built with the thread-first (`->`) macro and the various
-helper functions provided by `corax`:
+helper functions provided by Corax:
 
 ```clj
 (-> (err/message "Things went wrong")
@@ -36,11 +46,11 @@ helper functions provided by `corax`:
 
 ### Send the event:
 
-A built event is finally submitted to Sentry with `report`:
+A built event is submitted to Sentry with `report`:
 
 ```clj
 (-> ... ;; build the event like above
-    (err/report {:dsn my-dsn}))
+    (err/report error-reporter))
 
 ```
 
@@ -49,19 +59,20 @@ A built event is finally submitted to Sentry with `report`:
 ```clj
 (require '[corax.core :as err])
 (def my-dsn "") ;; get your DSN from getsentry.com
+(def error-reporter (err/new-error-reporter my-dsn))
 (-> (err/message "Things went wrong")
     (err/exception ex)
     (err/culprit ::my-fn)
-    (err/report {:dsn my-dsn})
+    (err/report error-reporter
 ```
 
 ## API
 
-The `corax` API consists of a number of builders used to build an
-event incrementally, and a `report` function used to submit the built
-event to Sentry. All the builders can either create a new event map,
-or add new fields to a provided map, which allows the builders to be
-chained together with the threading macro (`->`).
+The Corax API consists of a number of builders used to build an event
+incrementally, and a `report` function used to submit the built event
+to Sentry. All the builders can either create a new event map, or add
+new fields to a provided map, which allows the builders to be chained
+together with the threading macro (`->`).
 
 More details on the format and semantics of a Sentry event can be
 found in the Sentry documentation on [writing a client][2] and [the
@@ -95,8 +106,9 @@ be an instance of `java.lang.Throwable`.
 ```
 
 `ex-data` is automatically called on `ex` and the resulting map is
-included in the event under the :ex-data key in the :extra map. Any
-existing :ex-data field will be overwritten.
+included in the event under the `:ex-data` key in the `:extra`
+map. Any existing `:ex-data` field in the `:extra` map will be
+overwritten.
 
 If the event doesn't contain a `:message` field yet, the exception
 message will be set as `:message`. The `:message` field can be
@@ -104,8 +116,8 @@ explicitly set by calling `message` either before or after calling
 `exception`.
 
 An exception in the event is rendered as a stack trace under the
-Exception heading in the Sentry web UI. The type of the exception and
-the message are also rendered. Corax uses [`clj-stacktrace`][5] to
+Exception heading in the Sentry web UI. The type and message of the
+exception are also rendered. Corax uses [`clj-stacktrace`][5] to
 translate a stack trace to something that Sentry can render in the web
 UI. We try to provide sensible, language-specific stack frames for
 both Clojure and Java.
@@ -116,9 +128,9 @@ both Clojure and Java.
 Include any arbitrary data in the event. The argument must be a
 map. When this function is called more than once on an event, the
 `:extra` fields are merged together. If the multiple calls share keys,
-the latter calls will overwrite the keys from earlier calld (see
+the latter calls will overwrite the keys from earlier calls (see
 Clojure's [`merge`][10]). The extra payload must be serializable to
-JSON by [`cheshire`][6].
+JSON by [Cheshire][6].
 
 ```clj
 (extra {:foo :bar})
@@ -141,8 +153,8 @@ and translates that to a map understood by Sentry.
 ```
 
 Note: Sentry supports arbitrary data in the `:env` map. This facility
-is not exposed by `corax` at the moment, but the user can add fields
-to the `:env` map manually if they so wish:
+is not exposed by Corax at the moment, but the user can add fields to
+the `:env` map manually if they so wish:
 
 ```clj
 (-> (http ring-req)
@@ -155,7 +167,7 @@ But it might be simpler to just use `extra`.
 ### level
 
 The severity of the event (a string or a keyword). If not specified,
-`corax` will default the field to `:error`. Accepted values are
+Corax will default the field to `:error`. Accepted values are
 `:fatal`, `:error`, `:warning`, `:info`, and `:debug`.
 
 ```clj
@@ -205,10 +217,9 @@ the Sentry web UI.
 
 A string or keyword representing the platform the client is submitting
 from. Eg `:clojure` or `:python`. If a platform is not specified,
-`corax` will default it to `:clojure`. The platform field is used by
-the Sentry interface to customize various components in the web UI,
-but it's unlikely that the web UI would have been customised for
-Clojure.
+Corax will default to `:clojure`. The platform field is used by the
+Sentry interface to customize various components in the web UI, but
+it's unlikely that the web UI would have been customized for Clojure.
 
 ```clj
 (platform :clojure)
@@ -219,7 +230,7 @@ Clojure.
 ### query
 
 Add a [`Query` interface][8] to an event. The Query interface consists
-of two fields: `:query` and `:engine`, where the former is mandator
+of two fields: `:query` and `:engine`, where the former is mandatory
 and the latter is optional. The `:query` field value should be a
 database query that was being performed when the error occurred. The
 `:engine` field is used to describe the database driver.
@@ -238,7 +249,7 @@ to be a way of accessing the fields of the Query payload.
 
 A string or keyword representing the server that the client is
 submitting from. Eg `"web1.example.com"`. If a `server-name` is not
-specified, it will default to the `corax` client's IP address.
+specified, it will default to the Corax client's IP address.
 
 ```clj
 (server-name :web1)
@@ -276,113 +287,122 @@ User information is rendered under the User heading in the Sentry web
 UI. Sentry keeps track of the number of users that have reported the
 same error.
 
+### new-error-reporter
+
+A new error reporter is instantiated with `new-error-reporter`. The
+function takes two arguments: `dsn` and `logger`.
+
+The `dsn` argument is mandatory and is used to specify the Sentry DSN
+to use when reporting events. If the provided DSN is `nil`, or looks
+otherwise invalid, `new-error-reporter` will throw an
+`AssertionError`. A DSN looks something like this:
+`https://12345...:67890...@app.getsentry.com/12345`.
+
+The optional `logger` argument is an implementation of
+`corax.log/Logger`. It is used to notify the calling application of
+the result of an error report. See `corax.log/Logger` for more
+details. If a logger is not provided, the default logger
+(`corax.log/CoraxLogger`) will be used. The default logger logs to
+`stdout`. `corax.core/NullLogger` can be used to turn *all* logging
+off. Please use your own custom implementation to redirect the output
+to your logging system.
+
 
 ### report
 
 The `report` function is used to submit an event to Sentry. `report`
-takes an event and an options map as arguments. The options map
-supports two keys: `:dsn` and `:log-fn`.
+takes an event and an error reporter as arguments.
 
-The `:dsn` keys is mandatory and is used to specify the Sentry DSN to
-use when reporting events. Without the DSN `corax` won't be able to
-submit events to Sentry. A DSN looks something like this:
-`https://12345...:67890...@app.getsentry.com/12345`.
+#### Logger
 
-The `:log-fn` is used to override `corax`'s default logger. The
-default logger logs to stdout, which isn't appopriate for many
-applications, so the caller can provide their own logging function by
-specifying the `:log-fn` key in the options map.
+The `corax.log/Logger` protocol defines the following methods:
 
-#### log function
+* `log-event-id` - the event was reported to Sentry
 
-The log function signature is:
+* `log-failure` - the call to Sentry returned an unexpected HTTP status
+  code
 
-```clj
-(defn log-fn [{:keys [dsn error event exception response]}]
-  ...)
+* `log-error` - an unexpected exception was thrown when reporting the
+  event
+
+The `event` argument in all the above method definitions contains the
+event that was being reported.
+
+#### JSON serialization errors
+
+The event will be serialized to JSON before it is submitted to Sentry
+(by [Cheshire][6]). If the event contains an object that is not
+serializable, Corax will report an error to Sentry pointing this out,
+but the original event will have been lost.
+
+The JSON serialization error contains the following message:
+
+```
+An object in the error report could not be serialized to
+JSON. This error is masking the real application error. For more
+details see https://github.com/listora/corax
 ```
 
-The `:error` key is a keyword describing the error that
-occurred. The errors defined currently are:
+The error report will also contain the
+`com.fasterxml.jackson.core.JsonGenerationException` that was thrown
+by Cheshire. The exception message explains which object failed to
+serialize, e.g. `Cannot JSON encode object of class: class
+java.lang.Exception: java.lang.Exception: foo`.
 
-* `:exception` - an unexpected exception was thrown when reporting the
-  event. The `:exception` key in the `log-fn` argument contains the
-  caught exception.
-* `:http-status` - the call to Sentry returned an unexpected HTTP
-  status code. The `:response` key in the `log-fn` argument
-  contains the unexpected HTTP response from clj-http.
-* `:invalid-dsn` - the provided DSN failed to parse. The `:dsn` key in
-  the `log-fn` argument contains the invalid DSN.
-* `:invalid-payload` - the event failed to serialize to JSON. The
-  `:exception` key will contain the exception thrown by the JSON
-  serializer.
-* `:no-dsn` - a DSN was not provided
+The serialization problem can be addressed by:
 
-`corax.error-reporter/error-messages` defines a mapping of `:error`
-keywords to error messages, but the caller can also define their own
-translation.
+- making sure that the offending object is stripped out from the event
+before `report`ing it to Sentry
 
-The `:event` field in the `log-fn` argument will contain the event
-that was being reported.
+- by adding a custom JSON encoder for the offending type
 
-Here's the default logging function as an example of how to override
-the logger:
+- by adding a catch-all JSON encoder for `Object`
+
+The first approach is sometimes hard to implement since it might not
+be obvious where the offending object is coming from. The second
+approach is quite simple, but it will fix the problem only for one
+type and adding JSON encoders to your application might have unwanted
+effects if you use Cheshire in your own application. The third option
+is the nuclear option and will address all JSON serialization
+problems, but again with possibly unwanted side-effects if you use
+Cheshire in your own app.
+
+Custom JSON encoders can be added to Cheshire with the `add-encoder`
+fn:
 
 ```clj
-(defn my-log-fn
-  [{:keys [dsn error event exception response]}]
-  (let [event-str (with-out-str (clojure.pprint/pprint event))
-        message (get corax.error-reporter/error-messages
-                     error
-                     (str "Unknown error: " error))]
-    (println message)
-    (when dsn
-      (println "DSN: " dsn))
-    (when exception
-      (println (clj-stacktrace.repl/pst-str exception)))
-    (when response
-       (pprint response))
-    (println "Event:" event-str)))
-
-(-> (message "test logger")
-    (report {:dsn my-dsn :log-fn my-log-fn}))
+(require '[cheshire.generate :as generate])
+(generate/add-encoder Exception (fn [e jg] (.writeString jg (str e))))
 ```
 
-A few points to notice:
+Here we simply call `str` on the provided `Exception` instance to
+produce a `String` which can be included in the JSON event.
 
-* We pretty-print the event. Events, especially those with exceptions
-  in them, can get quite large. Simply printing them out to a log file
-  will make them almost impossible to understand. By pretty-printing
-  them, we can make them a bit more digestable.
+The nuclear option is to enable to `str` -based serialization as a
+default:
 
-* We translate the `error` keyword to a user-readable message.
-
-* We handle the case where `error` is an unexpected keyword.
-
-* Some of the fields won't always be present in the call to `log-fn`,
-  ie `:dsn`, `:exception` and `:response`.
-
-* We leverage `clj-stacktrace` to produce a Clojure-specific
-  stacktrace for us.
+```clj
+(generate/add-encoder Object (fn [e jg] (.writeString jg (str e))))
+```
 
 
 ## Ring middleware
 
-Corax provides ring middleware for reporting any exceptions thrown by
-the request handler as errors to Sentry:
+Corax provides an example ring middleware for reporting any exceptions
+thrown by the request handler as errors to Sentry:
 
 ```clj
+(require '[corax.core :as corax])
 (require '[corax.middleware :refer [wrap-exception-reporting]])
 
-(defn- log-fn
-  [args]
-  ...)
+(def my-dsn "") ;; get your DSN from getsentry.com
+(def error-reporter (err/new-error-reporter my-dsn))
 
 (defn apply-middleware
-  [routes dsn]
+  [routes]
   (-> routes
       ...
-      (wrap-exception-reporting {:dsn dsn :log-fn log-fn)
+      (wrap-exception-reporting error-reporter)
       ...))
 ```
 
@@ -390,9 +410,17 @@ Note: the middleware will rethrow the caught exception to allow some
 other middleware to catch it and return an appropriate HTTP response.
 
 
+### Testing
+
+The library defines an `ErrorReporter` protocol which is implemented
+by the `CoraxErrorReporter` record. You can mock out the Corax error
+reporter in your tests by providing a mock implementation of
+`ErrorReporter` and passing that to `report`.
+
+
 ## License
 
-Copyright © 2014 Listora
+Copyright © 2014 - 2015 Listora
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.

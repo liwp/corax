@@ -1,7 +1,7 @@
 (ns corax.core-test
   (:require [clojure.test :refer [deftest is run-tests testing]]
             [corax.core :refer :all]
-            [corax.error-reporter :as err]))
+            [corax.error-reporter :as error-reporter]))
 
 (deftest test-culprit
   (testing "culprit"
@@ -79,7 +79,12 @@
       (let [ev (-> (extra {:a "a"})
                    (extra {:b "b"}))]
         (is (= ev {:extra {:a "a" :b "b"}})
-            "should merge data maps")))))
+            "should merge data maps")))
+
+    (testing "when called with a non-map argument"
+      (is (thrown? AssertionError (extra [:a "a"])))
+      (is (thrown? AssertionError (extra "a")))
+      (is (thrown? AssertionError (extra 1))))))
 
 (deftest test-http
   (let [req {:request-method :post
@@ -272,35 +277,28 @@
         (is (= ev {:user {}})
             "should ignore unexpected arguments")))))
 
+(deftest test-new-error-reporter
+  (testing "with invalid dsn"
+    (doseq [s [nil
+               ""
+               [:not "a" String]
+               "prot://host:port/1"
+               "prot://login:password@host:port/"
+               "prot://login:password@host:port/x"]]
+      (is (thrown? AssertionError (new-error-reporter s)))))
+
+  (testing "with invalid logger"
+    (is (thrown? AssertionError (new-error-reporter "dsn" (fn [] nil))))))
+
+(defrecord MockErrorReporter [actual-event]
+  error-reporter/ErrorReporter
+  (-report [this event]
+    (is (nil? @actual-event))
+    (reset! actual-event event)))
+
 (deftest test-report
   (testing "report"
-    (let [report-called (atom nil)
-          dummy-log-fn (fn [])]
-      (with-redefs [corax.core/utc (fn [] "timestamp")]
-
-        (testing "with default :level, :platform, and :timestamp fields"
-          (with-redefs [err/report (fn [event dsn log-fn]
-                                     (reset! report-called true)
-                                     (is (= event
-                                            {:level :error
-                                             :platform :clojure
-                                             :timestamp "timestamp"}))
-                                     (is (= dsn "dummy dsn"))
-                                     (is (= log-fn dummy-log-fn)))]
-            (report {} {:dsn "dummy dsn" :log-fn dummy-log-fn})
-            (is (true? @report-called) "should call report")))
-
-        (testing "with overriding :level, :platform, and :timestamp fields"
-          (with-redefs [err/report (fn [event dsn log-fn]
-                                     (reset! report-called true)
-                                     (is (= event
-                                            {:level :my-level
-                                             :platform :my-platform
-                                             :timestamp :my-timestamp}))
-                                     (is (= dsn "dummy dsn"))
-                                     (is (= log-fn dummy-log-fn)))]
-            (report {:level :my-level
-                     :platform :my-platform
-                     :timestamp :my-timestamp}
-                    {:dsn "dummy dsn" :log-fn dummy-log-fn})
-            (is (true? @report-called) "should call report")))))))
+    (let [error-reporter (->MockErrorReporter (atom nil))]
+      (report {:foo "bar"} error-reporter)
+      (let [actual-event (-> error-reporter :actual-event deref)]
+        (is (= actual-event {:foo "bar"}))))))
